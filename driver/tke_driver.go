@@ -1071,7 +1071,8 @@ func getClientSet(ctx context.Context, info *types.ClusterInfo) (kubernetes.Inte
 
 	var kubeconfig *string
 	kubeconfig = certs.Response.Kubeconfig
-	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
+	logrus.Infof("==============kubeconfig %+v", *kubeconfig)
+	config, err := clientcmd.RESTConfigFromKubeConfig([]byte(*kubeconfig))
 	if err != nil {
 		logrus.Infof("==============err %+v", err)
 		return nil, err
