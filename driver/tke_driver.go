@@ -1068,7 +1068,9 @@ func getClientSet(ctx context.Context, info *types.ClusterInfo) (kubernetes.Inte
 	if !strings.HasPrefix(host, "https://") {
 		host = fmt.Sprintf("https://%s", host)
 	}
+	logrus.Infof("==============certs %+v", *certs)
 
+	logrus.Infof("==============info %+v", info)
 	config := &rest.Config{
 		Host:     host,
 		Username: *certs.Response.UserName,
@@ -1077,6 +1079,7 @@ func getClientSet(ctx context.Context, info *types.ClusterInfo) (kubernetes.Inte
 			CAData: []byte(*certs.Response.CertificationAuthority),
 		},
 	}
+	logrus.Infof("==============config %+v", config)
 	clientSet, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		return nil, fmt.Errorf("error creating clientset: %v", err)
