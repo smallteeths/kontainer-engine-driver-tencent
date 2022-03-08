@@ -2,11 +2,14 @@ module github.com/rancher/kontainer-engine-driver-tencent
 
 go 1.17
 
-replace k8s.io/client-go => github.com/rancher/client-go v1.22.3-rancher.1
+replace (
+ k8s.io/client-go => github.com/rancher/client-go v1.22.3-rancher.1
+ github.com/rancher/rancher/pkg/apis => github.com/rancher/rancher/pkg/apis v0.0.0-20220308000653-f2a4147cf98d
+）
 
 require (
 	github.com/rancher/rancher v0.0.0-20220308000653-f2a4147cf98d
-	github.com/rancher/rancher/pkg/apis v0.0.0-20220308000653-f2a4147cf98d
+	github.com/rancher/rancher/pkg/apis v0.0.0
 	github.com/rancher/rke v1.3.8-rc5
 	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.7.0
