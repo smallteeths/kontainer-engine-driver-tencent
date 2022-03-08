@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rancher/kontainer-engine/drivers/options"
-	"github.com/rancher/kontainer-engine/drivers/util"
-	"github.com/rancher/kontainer-engine/types"
+	"github.com/rancher/rancher/pkg/kontainer-engine/drivers/options"
+	"github.com/rancher/rancher/pkg/kontainer-engine/drivers/util"
+	"github.com/rancher/rancher/pkg/kontainer-engine/types"
 	"github.com/rancher/rke/log"
 	"github.com/sirupsen/logrus"
 	tccommon "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common"
@@ -40,6 +40,11 @@ var (
 type Driver struct {
 	driverCapabilities types.Capabilities
 }
+
+func (d *Driver) ETCDRemoveSnapshot(ctx context.Context, clusterInfo *types.ClusterInfo, opts *types.DriverOptions, snapshotName string) error {
+	return fmt.Errorf("ETCD backup operations are not implemented")
+}
+
 type state struct {
 	// The id of the cluster
 	ClusterID string
@@ -1079,14 +1084,12 @@ func getClientSet(ctx context.Context, info *types.ClusterInfo) (kubernetes.Inte
 	return clientSet, nil
 }
 
-// ETCDSave will backup etcd snapshot to s3 server
-func (d *Driver) ETCDSave(ctx context.Context, info *types.ClusterInfo, opts *types.DriverOptions, snapshotName string) error {
+func (d *Driver) ETCDSave(ctx context.Context, clusterInfo *types.ClusterInfo, opts *types.DriverOptions, snapshotName string) error {
 	return fmt.Errorf("ETCD backup operations are not implemented")
 }
 
-// ETCDRestore will restore etcd snapshot from s3 server
-func (d *Driver) ETCDRestore(ctx context.Context, info *types.ClusterInfo, opts *types.DriverOptions, snapshotName string) error {
-	return fmt.Errorf("ETCD backup operations are not implemented")
+func (d *Driver) ETCDRestore(ctx context.Context, clusterInfo *types.ClusterInfo, opts *types.DriverOptions, snapshotName string) (*types.ClusterInfo, error) {
+	return nil, fmt.Errorf("ETCD backup operations are not implemented")
 }
 
 // GetK8SCapabilities defines TKE k8s capabilities
