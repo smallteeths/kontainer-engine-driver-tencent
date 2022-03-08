@@ -689,7 +689,7 @@ func storeState(info *types.ClusterInfo, state *state) error {
 		info.Metadata = map[string]string{}
 	}
 	info.Metadata["state"] = string(bytes)
-	info.Metadata["project-id"] = string(state.ProjectID)
+	info.Metadata["project-id"] = string(rune(state.ProjectID))
 	info.Metadata["zone"] = state.Region
 	return nil
 }
