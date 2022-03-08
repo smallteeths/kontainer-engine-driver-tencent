@@ -858,7 +858,7 @@ func (d *Driver) PostCheck(ctx context.Context, info *types.ClusterInfo) (*types
 			break
 		} else {
 			if failureCount < retries {
-				logrus.Infof("service account token generation failed, retries left: %v", retries-failureCount)
+				logrus.Infof("service account token generation failed, retries left: %v error: %+v", retries-failureCount, err)
 				failureCount = failureCount + 1
 
 				time.Sleep(pollInterval * time.Second)
