@@ -19,7 +19,7 @@ import (
 	"golang.org/x/net/context"
 
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 const (
@@ -1068,17 +1068,25 @@ func getClientSet(ctx context.Context, info *types.ClusterInfo) (kubernetes.Inte
 	if !strings.HasPrefix(host, "https://") {
 		host = fmt.Sprintf("https://%s", host)
 	}
-	logrus.Infof("==============certs %+v", *certs)
+
+	var kubeconfig *string
+	kubeconfig = certs.Response.Kubeconfig
+	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
+	if err != nil {
+		logrus.Infof("==============err %+v", err)
+		return nil, err
+	}
+	logrus.Infof("==============kubeconfig %+v", *kubeconfig)
 
 	logrus.Infof("==============info %+v", info)
-	config := &rest.Config{
-		Host:     host,
-		Username: *certs.Response.UserName,
-		Password: *certs.Response.Password,
-		TLSClientConfig: rest.TLSClientConfig{
-			CAData: []byte(*certs.Response.CertificationAuthority),
-		},
-	}
+	//config := &rest.Config{
+	//	Host:     host,
+	//	Username: *certs.Response.UserName,
+	//	Password: *certs.Response.Password,
+	//	TLSClientConfig: rest.TLSClientConfig{
+	//		CAData: []byte(*certs.Response.CertificationAuthority),
+	//	},
+	//}
 	logrus.Infof("==============config %+v", config)
 	clientSet, err := kubernetes.NewForConfig(config)
 	if err != nil {
