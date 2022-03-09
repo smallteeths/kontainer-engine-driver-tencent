@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rancher/kontainer-engine/drivers/options"
-	"github.com/rancher/kontainer-engine/drivers/util"
-	"github.com/rancher/kontainer-engine/types"
+	"github.com/rancher/rancher/pkg/kontainer-engine/drivers/options"
+	"github.com/rancher/rancher/pkg/kontainer-engine/drivers/util"
+	"github.com/rancher/rancher/pkg/kontainer-engine/types"
 	"github.com/rancher/rke/log"
 	"github.com/sirupsen/logrus"
 	tccommon "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common"
@@ -19,7 +19,8 @@ import (
 	"golang.org/x/net/context"
 
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
+	restclient "k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 const (
@@ -40,6 +41,11 @@ var (
 type Driver struct {
 	driverCapabilities types.Capabilities
 }
+
+func (d *Driver) ETCDRemoveSnapshot(ctx context.Context, clusterInfo *types.ClusterInfo, opts *types.DriverOptions, snapshotName string) error {
+	return fmt.Errorf("ETCD backup operations are not implemented")
+}
+
 type state struct {
 	// The id of the cluster
 	ClusterID string
@@ -684,7 +690,7 @@ func storeState(info *types.ClusterInfo, state *state) error {
 		info.Metadata = map[string]string{}
 	}
 	info.Metadata["state"] = string(bytes)
-	info.Metadata["project-id"] = string(state.ProjectID)
+	info.Metadata["project-id"] = string(rune(state.ProjectID))
 	info.Metadata["zone"] = state.Region
 	return nil
 }
@@ -853,7 +859,7 @@ func (d *Driver) PostCheck(ctx context.Context, info *types.ClusterInfo) (*types
 			break
 		} else {
 			if failureCount < retries {
-				logrus.Infof("service account token generation failed, retries left: %v", retries-failureCount)
+				logrus.Infof("service account token generation failed, retries left: %v error: %+v", retries-failureCount, err)
 				failureCount = failureCount + 1
 
 				time.Sleep(pollInterval * time.Second)
@@ -1063,15 +1069,27 @@ func getClientSet(ctx context.Context, info *types.ClusterInfo) (kubernetes.Inte
 	if !strings.HasPrefix(host, "https://") {
 		host = fmt.Sprintf("https://%s", host)
 	}
-
-	config := &rest.Config{
-		Host:     host,
-		Username: *certs.Response.UserName,
-		Password: *certs.Response.Password,
-		TLSClientConfig: rest.TLSClientConfig{
-			CAData: []byte(*certs.Response.CertificationAuthority),
-		},
+	var config *restclient.Config
+	kubeconfig := certs.Response.Kubeconfig
+	if kubeconfig != nil {
+		logrus.Infof("Generate config via kubeconfig")
+		config, err = clientcmd.RESTConfigFromKubeConfig([]byte(*kubeconfig))
+		if err != nil {
+			logrus.Infof("Generate config Failed %+v", err)
+			return nil, err
+		}
+	} else {
+		logrus.Infof("Generate config via CA")
+		config = &restclient.Config{
+			Host:     host,
+			Username: *certs.Response.UserName,
+			Password: *certs.Response.Password,
+			TLSClientConfig: restclient.TLSClientConfig{
+				CAData: []byte(*certs.Response.CertificationAuthority),
+			},
+		}
 	}
+
 	clientSet, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		return nil, fmt.Errorf("error creating clientset: %v", err)
@@ -1079,14 +1097,12 @@ func getClientSet(ctx context.Context, info *types.ClusterInfo) (kubernetes.Inte
 	return clientSet, nil
 }
 
-// ETCDSave will backup etcd snapshot to s3 server
-func (d *Driver) ETCDSave(ctx context.Context, info *types.ClusterInfo, opts *types.DriverOptions, snapshotName string) error {
+func (d *Driver) ETCDSave(ctx context.Context, clusterInfo *types.ClusterInfo, opts *types.DriverOptions, snapshotName string) error {
 	return fmt.Errorf("ETCD backup operations are not implemented")
 }
 
-// ETCDRestore will restore etcd snapshot from s3 server
-func (d *Driver) ETCDRestore(ctx context.Context, info *types.ClusterInfo, opts *types.DriverOptions, snapshotName string) error {
-	return fmt.Errorf("ETCD backup operations are not implemented")
+func (d *Driver) ETCDRestore(ctx context.Context, clusterInfo *types.ClusterInfo, opts *types.DriverOptions, snapshotName string) (*types.ClusterInfo, error) {
+	return nil, fmt.Errorf("ETCD backup operations are not implemented")
 }
 
 // GetK8SCapabilities defines TKE k8s capabilities

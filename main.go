@@ -10,7 +10,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/rancher/kontainer-engine-driver-tencent/driver"
-	"github.com/rancher/kontainer-engine/types"
+	"github.com/rancher/rancher/pkg/kontainer-engine/types"
 )
 
 var wg = &sync.WaitGroup{}
