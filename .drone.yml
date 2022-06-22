@@ -11,16 +11,16 @@ steps:
   pull: default
   image: rancher/dapper:v0.4.1
   commands:
-  - dapper ci
+    - dapper ci
   privileged: true
   volumes:
   - name: docker
     path: /var/run/docker.sock
   when:
     event:
-    - push
-    - pull_request
-    - tag
+      - push
+      - pull_request
+      - tag
 
 - name: github-binary-publish-release
   image: plugins/github-release
@@ -28,17 +28,17 @@ steps:
     api_key:
       from_secret: github_token
     checksum:
-    - sha256
+      - sha256
     checksum_file: CHECKSUMsum-amd64.txt
     checksum_flatten: true
     files:
-     - bin/kontainer-engine-driver-tencent-*
+      - bin/kontainer-engine-driver-tencent-*
   when:
     ref:
-    - refs/head/master
-    - refs/tags/*
+      - refs/head/master
+      - refs/tags/*
     event:
-    - tag
+      - tag
 
 volumes:
 - name: docker
