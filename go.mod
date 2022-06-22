@@ -38,7 +38,9 @@ require (
 	github.com/rancher/rke v1.3.8-rc5
 	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.7.0
-	github.com/tencentcloud/tencentcloud-sdk-go v0.0.0-20200521010456-bef502c03239
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.0.419
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cvm v1.0.419
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/tke v1.0.419
 	golang.org/x/net v0.0.0-20220107192237-5cfca573fb4d
 	k8s.io/client-go v12.0.0+incompatible
 )
