@@ -514,12 +514,14 @@ func (d *Driver) Create(ctx context.Context, opts *types.DriverOptions, _ *types
 	defer storeState(info, state)
 
 	// init tke client and make create cluster api request
-	resp, err := svc.CreateCluster(req)
-	if err != nil {
-		return info, err
+	if clusterID, ok := state.ClusterInfo.Metadata["clusterID"]; !ok || clusterID == "" {
+		resp, err := svc.CreateCluster(req)
+		if err != nil {
+			return info, err
+		}
+		state.ClusterID = *resp.Response.ClusterId
 	}
-
-	state.ClusterID = *resp.Response.ClusterId
+	logrus.Infof("The created clusterID is %s", state.ClusterInfo.Metadata["clusterID"])
 	logrus.Debugf("Cluster %s create is called for region %s and zone %s.", state.ClusterID, state.Region, state.ZoneID)
 
 	if err := waitTKECluster(ctx, svc, state); err != nil {
@@ -692,6 +694,7 @@ func storeState(info *types.ClusterInfo, state *state) error {
 	info.Metadata["state"] = string(bytes)
 	info.Metadata["project-id"] = string(rune(state.ProjectID))
 	info.Metadata["zone"] = state.Region
+	info.Metadata["clusterID"] = state.ClusterID
 	return nil
 }
 
@@ -827,14 +830,11 @@ func getClusterCerts(svc *tke.Client, state *state) (*tke.DescribeClusterSecurit
 	logrus.Info("invoking getClusterCerts")
 
 	request := tke.NewDescribeClusterSecurityRequest()
-	content, err := json.Marshal(state)
-	if err != nil {
-		return nil, err
+	if state == nil || state.ClusterID == "" {
+		logrus.Infof("Cluster %s clusterId doesn't exist", state.ClusterName)
+		return nil, fmt.Errorf("DescribeClusterSecurityRequest cluster id is nil")
 	}
-
-	if err = request.FromJsonString(string(content)); err != nil {
-		return nil, err
-	}
+	request.ClusterId = tccommon.StringPtr(state.ClusterID)
 
 	resp, err := svc.DescribeClusterSecurity(request)
 	if err != nil {
@@ -914,14 +914,11 @@ func (d *Driver) Remove(ctx context.Context, info *types.ClusterInfo) error {
 func (d *Driver) getWrapRemoveClusterRequest(state *state) (*tke.DeleteClusterRequest, error) {
 	logrus.Info("invoking get remove cluster request")
 	request := tke.NewDeleteClusterRequest()
-	content, err := json.Marshal(state)
-	if err != nil {
-		return nil, err
+	if state == nil || state.ClusterID == "" {
+		logrus.Infof("Cluster %s clusterId doesn't exist", state.ClusterName)
+		return nil, fmt.Errorf("DescribeClusterSecurityRequest cluster id is nil")
 	}
-
-	if err = request.FromJsonString(string(content)); err != nil {
-		return nil, err
-	}
+	request.ClusterId = tccommon.StringPtr(state.ClusterID)
 	return request, nil
 }
 
