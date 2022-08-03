@@ -1120,29 +1120,31 @@ func getClientSet(ctx context.Context, info *types.ClusterInfo) (kubernetes.Inte
 		return nil, err
 	}
 
-	var kubeconfig *string
 	if *certs.Response.ClusterExternalEndpoint == "" {
 		err := operateClusterVip(ctx, svc, state, "Create")
 		if err != nil {
 			return nil, err
 		}
-
-		// update cluster certs with new generated cluster vip
-		kubconfigResponse, err := getClusterKubeConfig(svc, state)
-		if err != nil {
-			return nil, err
-		}
-		kubeconfig = kubconfigResponse.Response.Kubeconfig
 	}
+	// update cluster certs with new generated cluster vip
+	kubconfigResponse, err := getClusterKubeConfig(svc, state)
+	if err != nil {
+		return nil, err
+	}
+	kubeconfig := kubconfigResponse.Response.Kubeconfig
 	var config *restclient.Config
 	if kubeconfig != nil {
-		logrus.Infof("Generate config via kubeconfig")
+		logrus.Infof("Generate config via kubeconfig %+v", *kubeconfig)
 		config, err = clientcmd.RESTConfigFromKubeConfig([]byte(*kubeconfig))
 		if err != nil {
 			logrus.Infof("Generate config Failed %+v", err)
 			return nil, err
 		}
 	} else {
+		certs, err = getClusterCerts(svc, state)
+		if err != nil {
+			return nil, err
+		}
 		logrus.Infof("Generate config via CA")
 		info.Version = *cluster.Response.Clusters[0].ClusterVersion
 		info.Endpoint = *certs.Response.ClusterExternalEndpoint
