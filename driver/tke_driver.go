@@ -1031,8 +1031,9 @@ func operateClusterVip(ctx context.Context, svc *tke.Client, state *state, opera
 	IsExtranet := true
 	req.IsExtranet = &IsExtranet
 
-	reqStatus := tke.NewDescribeClusterEndpointVipStatusRequest()
+	reqStatus := tke.NewDescribeClusterEndpointStatusRequest()
 	reqStatus.ClusterId = &state.ClusterID
+	reqStatus.IsExtranet = &IsExtranet
 
 	if _, err := svc.CreateClusterEndpoint(req); err != nil {
 		return fmt.Errorf("an API error has returned: %s", err)
@@ -1040,14 +1041,14 @@ func operateClusterVip(ctx context.Context, svc *tke.Client, state *state, opera
 
 	count := 0
 	for {
-		respStatus, err := svc.DescribeClusterEndpointVipStatus(reqStatus)
+		respStatus, err := svc.DescribeClusterEndpointStatus(reqStatus)
 		if err != nil {
 			return fmt.Errorf("an API error has returned: %s", err)
 		}
 
-		if *respStatus.Response.Status == successStatus && count >= 1 {
+		if *respStatus.Response.Status == "Created" && count >= 1 {
 			return nil
-		} else if *respStatus.Response.Status == failedStatus {
+		} else if *respStatus.Response.Status == "NotFound" {
 			return fmt.Errorf("describe cluster endpoint vip status: %s", err)
 		}
 		count++
