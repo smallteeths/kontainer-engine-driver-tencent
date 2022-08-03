@@ -1022,16 +1022,17 @@ func (d *Driver) GetVersion(ctx context.Context, info *types.ClusterInfo) (*type
 }
 
 // operateClusterVip creates or remove the cluster vip
-func operateClusterVip(ctx context.Context, svc *tke.Client, clusterID, operation string) error {
+func operateClusterVip(ctx context.Context, svc *tke.Client, state *state, operation string) error {
 	logrus.Info("invoking operateClusterVip")
 
-	req := tke.NewCreateClusterEndpointVipRequest()
-	req.ClusterId = &clusterID
-	// make all request can be through
-	req.SecurityPolicies = tccommon.StringPtrs([]string{"0.0.0.0/0"})
+	req := tke.NewCreateClusterEndpointRequest()
+	req.ClusterId = &state.ClusterID
+	req.SecurityGroup = tccommon.StringPtr(state.SgID)
+	IsExtranet := true
+	req.IsExtranet = &IsExtranet
 
 	reqStatus := tke.NewDescribeClusterEndpointVipStatusRequest()
-	reqStatus.ClusterId = &clusterID
+	reqStatus.ClusterId = &state.ClusterID
 
 	if _, err := svc.CreateClusterEndpointVip(req); err != nil {
 		return fmt.Errorf("an API error has returned: %s", err)
@@ -1044,7 +1045,7 @@ func operateClusterVip(ctx context.Context, svc *tke.Client, clusterID, operatio
 			return fmt.Errorf("an API error has returned: %s", err)
 		}
 
-		if *respStatus.Response.Status == successStatus && count >= 0 {
+		if *respStatus.Response.Status == successStatus && count >= 1 {
 			return nil
 		} else if *respStatus.Response.Status == failedStatus {
 			return fmt.Errorf("describe cluster endpoint vip status: %s", err)
@@ -1100,6 +1101,32 @@ func getClientSet(ctx context.Context, info *types.ClusterInfo) (kubernetes.Inte
 	if err != nil {
 		return nil, err
 	}
+
+	if *certs.Response.ClusterExternalEndpoint == "" {
+		err := operateClusterVip(ctx, svc, state, "Create")
+		if err != nil {
+			return nil, err
+		}
+
+		// update cluster certs with new generated cluster vip
+		certs, err = getClusterCerts(svc, state)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	info.Version = *cluster.Response.Clusters[0].ClusterVersion
+	info.Endpoint = *certs.Response.ClusterExternalEndpoint
+	info.RootCaCertificate = base64.StdEncoding.EncodeToString([]byte(*certs.Response.CertificationAuthority))
+	info.Username = *certs.Response.UserName
+	info.Password = *certs.Response.Password
+	info.NodeCount = int64(*cluster.Response.Clusters[0].ClusterNodeNum)
+	info.Status = *cluster.Response.Clusters[0].ClusterStatus
+
+	host := info.Endpoint
+	if !strings.HasPrefix(host, "https://") {
+		host = fmt.Sprintf("https://%s", host)
+	}
 	var config *restclient.Config
 	kubeconfig := certs.Response.Kubeconfig
 	if kubeconfig != nil {
@@ -1110,31 +1137,6 @@ func getClientSet(ctx context.Context, info *types.ClusterInfo) (kubernetes.Inte
 			return nil, err
 		}
 	} else {
-		if *certs.Response.ClusterExternalEndpoint == "" {
-			err := operateClusterVip(ctx, svc, state.ClusterID, "Create")
-			if err != nil {
-				return nil, err
-			}
-
-			// update cluster certs with new generated cluster vip
-			certs, err = getClusterCerts(svc, state)
-			if err != nil {
-				return nil, err
-			}
-		}
-
-		info.Version = *cluster.Response.Clusters[0].ClusterVersion
-		info.Endpoint = *certs.Response.ClusterExternalEndpoint
-		info.RootCaCertificate = base64.StdEncoding.EncodeToString([]byte(*certs.Response.CertificationAuthority))
-		info.Username = *certs.Response.UserName
-		info.Password = *certs.Response.Password
-		info.NodeCount = int64(*cluster.Response.Clusters[0].ClusterNodeNum)
-		info.Status = *cluster.Response.Clusters[0].ClusterStatus
-
-		host := info.Endpoint
-		if !strings.HasPrefix(host, "https://") {
-			host = fmt.Sprintf("https://%s", host)
-		}
 		logrus.Infof("Generate config via CA")
 		config = &restclient.Config{
 			Host:     host,

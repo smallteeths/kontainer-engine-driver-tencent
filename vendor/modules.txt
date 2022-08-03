@@ -88,17 +88,17 @@ github.com/spf13/pflag
 # github.com/stretchr/testify v1.7.0
 ## explicit
 github.com/stretchr/testify/assert
-# github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.0.419
+# github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.0.463
 ## explicit
 github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common
 github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/errors
 github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/http
 github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/profile
 github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/regions
-# github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cvm v1.0.419
+# github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cvm v1.0.463
 ## explicit
 github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cvm/v20170312
-# github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/tke v1.0.419
+# github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/tke v1.0.463
 ## explicit
 github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/tke/v20180525
 # golang.org/x/net v0.0.0-20220107192237-5cfca573fb4d
