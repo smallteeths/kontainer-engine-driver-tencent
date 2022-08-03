@@ -28,8 +28,12 @@ const (
 	successStatus  = "Created"
 	failedStatus   = "CreateFailed"
 	notReadyStatus = "ClusterNotReadyError"
-	retries        = 5
-	pollInterval   = 30
+	//PANDARIA instanceStatus（running，initializing，failed）
+	instanceRunningStatus      = "running"
+	instanceTnitializingStatus = "initializing"
+	instanceFailedStatus       = "failed"
+	retries                    = 5
+	pollInterval               = 30
 )
 
 var (
@@ -647,7 +651,37 @@ func waitTKECluster(ctx context.Context, svc *tke.Client, state *state) error {
 
 			if *cluster.Response.Clusters[0].ClusterStatus == runningStatus {
 				log.Infof(ctx, "cluster %v is running", state.ClusterName)
-				return nil
+				node, err := describeClusterInstances(svc, state)
+				if err != nil {
+					return fmt.Errorf("tencent describe cluster instances error: %v", err)
+				}
+				if *node.Response.TotalCount == 0 {
+					return fmt.Errorf("cluster without worker Node is not allowed to enable extranet access endpoint: %v", err)
+				}
+				instanceIsRunning := false
+				nodeInstanceId := ""
+				var failedInstanceId []string
+				for _, node := range node.Response.InstanceSet {
+					if *node.InstanceState == instanceFailedStatus {
+						failedInstanceId = append(failedInstanceId, *node.InstanceId)
+					}
+					if *node.InstanceState == instanceRunningStatus {
+						instanceIsRunning = true
+					}
+					if *node.InstanceState == instanceTnitializingStatus {
+						instanceIsRunning = false
+						nodeInstanceId = *node.InstanceId
+						break
+					}
+				}
+				if len(failedInstanceId) == len(node.Response.InstanceSet) {
+					return fmt.Errorf("all instanced are failed")
+				}
+				if instanceIsRunning {
+					log.Infof(ctx, "cluster all node running")
+					return nil
+				}
+				log.Infof(ctx, "cluster %v node %v is initializing", state.ClusterName, nodeInstanceId)
 			} else if *cluster.Response.Clusters[0].ClusterStatus == failedStatus {
 				return fmt.Errorf("tencent cloud failed to provision cluster")
 			}
@@ -673,6 +707,24 @@ func getCluster(svc *tke.Client, state *state) (*tke.DescribeClustersResponse, e
 	return resp, nil
 }
 
+func describeClusterInstances(svc *tke.Client, state *state) (*tke.DescribeClusterInstancesResponse, error) {
+	logrus.Infof("invoking getCluster")
+	req, err := getWrapDescribeClusterInstances(state)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := svc.DescribeClusterInstances(req)
+	if err != nil {
+		return resp, fmt.Errorf("an API error has returned: %s", err)
+	}
+
+	if *resp.Response.TotalCount <= 0 {
+		return nil, fmt.Errorf("cluster %s is not found", state.ClusterName)
+	}
+	return resp, nil
+}
+
 func getWrapDescribeClusterRequest(state *state) (*tke.DescribeClustersRequest, error) {
 	logrus.Info("invoking describeCluster")
 	request := tke.NewDescribeClustersRequest()
@@ -680,6 +732,14 @@ func getWrapDescribeClusterRequest(state *state) (*tke.DescribeClustersRequest, 
 	request.ClusterIds = []*string{
 		tccommon.StringPtr(state.ClusterID),
 	}
+	return request, nil
+}
+
+func getWrapDescribeClusterInstances(state *state) (*tke.DescribeClusterInstancesRequest, error) {
+	logrus.Info("invoking describeCluster")
+	request := tke.NewDescribeClusterInstancesRequest()
+	request.Limit = tccommon.Int64Ptr(int64(20))
+	request.ClusterId = tccommon.StringPtr(state.ClusterID)
 	return request, nil
 }
 
