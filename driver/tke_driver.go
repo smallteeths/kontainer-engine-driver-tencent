@@ -1125,6 +1125,10 @@ func getClientSet(ctx context.Context, info *types.ClusterInfo) (kubernetes.Inte
 		if err != nil {
 			return nil, err
 		}
+		certs, err = getClusterCerts(svc, state)
+		if err != nil {
+			return nil, err
+		}
 	}
 	info.Version = *cluster.Response.Clusters[0].ClusterVersion
 	info.Endpoint = *certs.Response.ClusterExternalEndpoint
@@ -1148,10 +1152,6 @@ func getClientSet(ctx context.Context, info *types.ClusterInfo) (kubernetes.Inte
 			return nil, err
 		}
 	} else {
-		certs, err = getClusterCerts(svc, state)
-		if err != nil {
-			return nil, err
-		}
 		logrus.Infof("Generate config via CA")
 		host := info.Endpoint
 		if !strings.HasPrefix(host, "https://") {
