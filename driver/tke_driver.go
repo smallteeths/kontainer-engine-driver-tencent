@@ -1126,6 +1126,13 @@ func getClientSet(ctx context.Context, info *types.ClusterInfo) (kubernetes.Inte
 			return nil, err
 		}
 	}
+	info.Version = *cluster.Response.Clusters[0].ClusterVersion
+	info.Endpoint = *certs.Response.ClusterExternalEndpoint
+	info.RootCaCertificate = base64.StdEncoding.EncodeToString([]byte(*certs.Response.CertificationAuthority))
+	info.Username = *certs.Response.UserName
+	info.Password = *certs.Response.Password
+	info.NodeCount = int64(*cluster.Response.Clusters[0].ClusterNodeNum)
+	info.Status = *cluster.Response.Clusters[0].ClusterStatus
 	// update cluster certs with new generated cluster vip
 	kubconfigResponse, err := getClusterKubeConfig(svc, state)
 	if err != nil {
@@ -1146,14 +1153,6 @@ func getClientSet(ctx context.Context, info *types.ClusterInfo) (kubernetes.Inte
 			return nil, err
 		}
 		logrus.Infof("Generate config via CA")
-		info.Version = *cluster.Response.Clusters[0].ClusterVersion
-		info.Endpoint = *certs.Response.ClusterExternalEndpoint
-		info.RootCaCertificate = base64.StdEncoding.EncodeToString([]byte(*certs.Response.CertificationAuthority))
-		info.Username = *certs.Response.UserName
-		info.Password = *certs.Response.Password
-		info.NodeCount = int64(*cluster.Response.Clusters[0].ClusterNodeNum)
-		info.Status = *cluster.Response.Clusters[0].ClusterStatus
-
 		host := info.Endpoint
 		if !strings.HasPrefix(host, "https://") {
 			host = fmt.Sprintf("https://%s", host)
