@@ -1034,7 +1034,7 @@ func operateClusterVip(ctx context.Context, svc *tke.Client, state *state, opera
 	reqStatus := tke.NewDescribeClusterEndpointVipStatusRequest()
 	reqStatus.ClusterId = &state.ClusterID
 
-	if _, err := svc.CreateClusterEndpointVip(req); err != nil {
+	if _, err := svc.CreateClusterEndpoint(req); err != nil {
 		return fmt.Errorf("an API error has returned: %s", err)
 	}
 
