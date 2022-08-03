@@ -659,29 +659,29 @@ func waitTKECluster(ctx context.Context, svc *tke.Client, state *state) error {
 					return fmt.Errorf("cluster without worker Node is not allowed to enable extranet access endpoint: %v", err)
 				}
 				instanceIsRunning := false
-				nodeInstanceId := ""
-				var failedInstanceId []string
+				nodeInstanceID := ""
+				var failedInstanceIDs []string
 				for _, node := range node.Response.InstanceSet {
 					if *node.InstanceState == instanceFailedStatus {
-						failedInstanceId = append(failedInstanceId, *node.InstanceId)
+						failedInstanceIDs = append(failedInstanceIDs, *node.InstanceId)
 					}
 					if *node.InstanceState == instanceRunningStatus {
 						instanceIsRunning = true
 					}
 					if *node.InstanceState == instanceTnitializingStatus {
 						instanceIsRunning = false
-						nodeInstanceId = *node.InstanceId
+						nodeInstanceID = *node.InstanceId
 						break
 					}
 				}
-				if len(failedInstanceId) == len(node.Response.InstanceSet) {
+				if len(failedInstanceIDs) == len(node.Response.InstanceSet) {
 					return fmt.Errorf("all instanced are failed")
 				}
 				if instanceIsRunning {
 					log.Infof(ctx, "cluster all node running")
 					return nil
 				}
-				log.Infof(ctx, "cluster %v node %v is initializing", state.ClusterName, nodeInstanceId)
+				log.Infof(ctx, "cluster %v node %v is initializing", state.ClusterName, nodeInstanceID)
 			} else if *cluster.Response.Clusters[0].ClusterStatus == failedStatus {
 				return fmt.Errorf("tencent cloud failed to provision cluster")
 			}
