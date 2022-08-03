@@ -903,6 +903,23 @@ func getClusterCerts(svc *tke.Client, state *state) (*tke.DescribeClusterSecurit
 	return resp, nil
 }
 
+func getClusterKubeConfig(svc *tke.Client, state *state) (*tke.DescribeClusterKubeconfigResponse, error) {
+	logrus.Info("invoking ClusterKubeconfig")
+	request := tke.NewDescribeClusterKubeconfigRequest()
+	if state == nil || state.ClusterID == "" {
+		logrus.Infof("Cluster %s clusterId doesn't exist", state.ClusterName)
+		return nil, fmt.Errorf("DescribeClusterSecurityRequest cluster id is nil")
+	}
+	request.ClusterId = tccommon.StringPtr(state.ClusterID)
+	request.IsExtranet = tccommon.BoolPtr(true)
+
+	resp, err := svc.DescribeClusterKubeconfig(request)
+	if err != nil {
+		return resp, fmt.Errorf("an API error has returned: %s", err)
+	}
+	return resp, nil
+}
+
 // PostCheck implements driver postCheck interface
 func (d *Driver) PostCheck(ctx context.Context, info *types.ClusterInfo) (*types.ClusterInfo, error) {
 	logrus.Info("starting post-check")
@@ -1103,6 +1120,7 @@ func getClientSet(ctx context.Context, info *types.ClusterInfo) (kubernetes.Inte
 		return nil, err
 	}
 
+	var kubeconfig *string
 	if *certs.Response.ClusterExternalEndpoint == "" {
 		err := operateClusterVip(ctx, svc, state, "Create")
 		if err != nil {
@@ -1110,26 +1128,13 @@ func getClientSet(ctx context.Context, info *types.ClusterInfo) (kubernetes.Inte
 		}
 
 		// update cluster certs with new generated cluster vip
-		certs, err = getClusterCerts(svc, state)
+		kubconfigResponse, err := getClusterKubeConfig(svc, state)
 		if err != nil {
 			return nil, err
 		}
-	}
-
-	info.Version = *cluster.Response.Clusters[0].ClusterVersion
-	info.Endpoint = *certs.Response.ClusterExternalEndpoint
-	info.RootCaCertificate = base64.StdEncoding.EncodeToString([]byte(*certs.Response.CertificationAuthority))
-	info.Username = *certs.Response.UserName
-	info.Password = *certs.Response.Password
-	info.NodeCount = int64(*cluster.Response.Clusters[0].ClusterNodeNum)
-	info.Status = *cluster.Response.Clusters[0].ClusterStatus
-
-	host := info.Endpoint
-	if !strings.HasPrefix(host, "https://") {
-		host = fmt.Sprintf("https://%s", host)
+		kubeconfig = kubconfigResponse.Response.Kubeconfig
 	}
 	var config *restclient.Config
-	kubeconfig := certs.Response.Kubeconfig
 	if kubeconfig != nil {
 		logrus.Infof("Generate config via kubeconfig")
 		config, err = clientcmd.RESTConfigFromKubeConfig([]byte(*kubeconfig))
@@ -1139,6 +1144,18 @@ func getClientSet(ctx context.Context, info *types.ClusterInfo) (kubernetes.Inte
 		}
 	} else {
 		logrus.Infof("Generate config via CA")
+		info.Version = *cluster.Response.Clusters[0].ClusterVersion
+		info.Endpoint = *certs.Response.ClusterExternalEndpoint
+		info.RootCaCertificate = base64.StdEncoding.EncodeToString([]byte(*certs.Response.CertificationAuthority))
+		info.Username = *certs.Response.UserName
+		info.Password = *certs.Response.Password
+		info.NodeCount = int64(*cluster.Response.Clusters[0].ClusterNodeNum)
+		info.Status = *cluster.Response.Clusters[0].ClusterStatus
+
+		host := info.Endpoint
+		if !strings.HasPrefix(host, "https://") {
+			host = fmt.Sprintf("https://%s", host)
+		}
 		config = &restclient.Config{
 			Host:     host,
 			Username: *certs.Response.UserName,
