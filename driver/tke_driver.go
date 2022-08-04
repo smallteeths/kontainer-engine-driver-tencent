@@ -17,10 +17,9 @@ import (
 	cvm "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cvm/v20170312"
 	tke "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/tke/v20180525"
 	"golang.org/x/net/context"
-
+	"gopkg.in/yaml.v2"
 	"k8s.io/client-go/kubernetes"
 	restclient "k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 )
 
 const (
@@ -28,8 +27,12 @@ const (
 	successStatus  = "Created"
 	failedStatus   = "CreateFailed"
 	notReadyStatus = "ClusterNotReadyError"
-	retries        = 5
-	pollInterval   = 30
+	//PANDARIA instanceStatus（running，initializing，failed）
+	instanceRunningStatus      = "running"
+	instanceTnitializingStatus = "initializing"
+	instanceFailedStatus       = "failed"
+	retries                    = 5
+	pollInterval               = 30
 )
 
 var (
@@ -647,7 +650,37 @@ func waitTKECluster(ctx context.Context, svc *tke.Client, state *state) error {
 
 			if *cluster.Response.Clusters[0].ClusterStatus == runningStatus {
 				log.Infof(ctx, "cluster %v is running", state.ClusterName)
-				return nil
+				node, err := describeClusterInstances(svc, state)
+				if err != nil {
+					return fmt.Errorf("tencent describe cluster instances error: %v", err)
+				}
+				if *node.Response.TotalCount == 0 {
+					return fmt.Errorf("cluster without worker Node is not allowed to enable extranet access endpoint: %v", err)
+				}
+				instanceIsRunning := false
+				nodeInstanceID := ""
+				var failedInstanceIDs []string
+				for _, node := range node.Response.InstanceSet {
+					if *node.InstanceState == instanceFailedStatus {
+						failedInstanceIDs = append(failedInstanceIDs, *node.InstanceId)
+					}
+					if *node.InstanceState == instanceRunningStatus {
+						instanceIsRunning = true
+					}
+					if *node.InstanceState == instanceTnitializingStatus {
+						instanceIsRunning = false
+						nodeInstanceID = *node.InstanceId
+						break
+					}
+				}
+				if len(failedInstanceIDs) == len(node.Response.InstanceSet) {
+					return fmt.Errorf("all instanced are failed")
+				}
+				if instanceIsRunning {
+					log.Infof(ctx, "cluster all node running")
+					return nil
+				}
+				log.Infof(ctx, "cluster %v node %v is initializing", state.ClusterName, nodeInstanceID)
 			} else if *cluster.Response.Clusters[0].ClusterStatus == failedStatus {
 				return fmt.Errorf("tencent cloud failed to provision cluster")
 			}
@@ -673,6 +706,24 @@ func getCluster(svc *tke.Client, state *state) (*tke.DescribeClustersResponse, e
 	return resp, nil
 }
 
+func describeClusterInstances(svc *tke.Client, state *state) (*tke.DescribeClusterInstancesResponse, error) {
+	logrus.Infof("invoking getCluster")
+	req, err := getWrapDescribeClusterInstances(state)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := svc.DescribeClusterInstances(req)
+	if err != nil {
+		return resp, fmt.Errorf("an API error has returned: %s", err)
+	}
+
+	if *resp.Response.TotalCount <= 0 {
+		return nil, fmt.Errorf("cluster %s is not found", state.ClusterName)
+	}
+	return resp, nil
+}
+
 func getWrapDescribeClusterRequest(state *state) (*tke.DescribeClustersRequest, error) {
 	logrus.Info("invoking describeCluster")
 	request := tke.NewDescribeClustersRequest()
@@ -680,6 +731,14 @@ func getWrapDescribeClusterRequest(state *state) (*tke.DescribeClustersRequest, 
 	request.ClusterIds = []*string{
 		tccommon.StringPtr(state.ClusterID),
 	}
+	return request, nil
+}
+
+func getWrapDescribeClusterInstances(state *state) (*tke.DescribeClusterInstancesRequest, error) {
+	logrus.Info("invoking describeCluster")
+	request := tke.NewDescribeClusterInstancesRequest()
+	request.Limit = tccommon.Int64Ptr(int64(20))
+	request.ClusterId = tccommon.StringPtr(state.ClusterID)
 	return request, nil
 }
 
@@ -843,6 +902,23 @@ func getClusterCerts(svc *tke.Client, state *state) (*tke.DescribeClusterSecurit
 	return resp, nil
 }
 
+func getClusterKubeConfig(svc *tke.Client, state *state) (*tke.DescribeClusterKubeconfigResponse, error) {
+	logrus.Info("invoking ClusterKubeconfig")
+	request := tke.NewDescribeClusterKubeconfigRequest()
+	if state == nil || state.ClusterID == "" {
+		logrus.Infof("Cluster %s clusterId doesn't exist", state.ClusterName)
+		return nil, fmt.Errorf("DescribeClusterSecurityRequest cluster id is nil")
+	}
+	request.ClusterId = tccommon.StringPtr(state.ClusterID)
+	request.IsExtranet = tccommon.BoolPtr(true)
+
+	resp, err := svc.DescribeClusterKubeconfig(request)
+	if err != nil {
+		return resp, fmt.Errorf("an API error has returned: %s", err)
+	}
+	return resp, nil
+}
+
 // PostCheck implements driver postCheck interface
 func (d *Driver) PostCheck(ctx context.Context, info *types.ClusterInfo) (*types.ClusterInfo, error) {
 	logrus.Info("starting post-check")
@@ -962,31 +1038,33 @@ func (d *Driver) GetVersion(ctx context.Context, info *types.ClusterInfo) (*type
 }
 
 // operateClusterVip creates or remove the cluster vip
-func operateClusterVip(ctx context.Context, svc *tke.Client, clusterID, operation string) error {
+func operateClusterVip(ctx context.Context, svc *tke.Client, state *state, operation string) error {
 	logrus.Info("invoking operateClusterVip")
 
-	req := tke.NewCreateClusterEndpointVipRequest()
-	req.ClusterId = &clusterID
-	// make all request can be through
-	req.SecurityPolicies = tccommon.StringPtrs([]string{"0.0.0.0/0"})
+	req := tke.NewCreateClusterEndpointRequest()
+	req.ClusterId = &state.ClusterID
+	req.SecurityGroup = tccommon.StringPtr(state.SgID)
+	IsExtranet := true
+	req.IsExtranet = &IsExtranet
 
-	reqStatus := tke.NewDescribeClusterEndpointVipStatusRequest()
-	reqStatus.ClusterId = &clusterID
+	reqStatus := tke.NewDescribeClusterEndpointStatusRequest()
+	reqStatus.ClusterId = &state.ClusterID
+	reqStatus.IsExtranet = &IsExtranet
 
-	if _, err := svc.CreateClusterEndpointVip(req); err != nil {
+	if _, err := svc.CreateClusterEndpoint(req); err != nil {
 		return fmt.Errorf("an API error has returned: %s", err)
 	}
 
 	count := 0
 	for {
-		respStatus, err := svc.DescribeClusterEndpointVipStatus(reqStatus)
+		respStatus, err := svc.DescribeClusterEndpointStatus(reqStatus)
 		if err != nil {
 			return fmt.Errorf("an API error has returned: %s", err)
 		}
 
-		if *respStatus.Response.Status == successStatus && count >= 1 {
+		if *respStatus.Response.Status == "Created" && count >= 1 {
 			return nil
-		} else if *respStatus.Response.Status == failedStatus {
+		} else if *respStatus.Response.Status == "NotFound" {
 			return fmt.Errorf("describe cluster endpoint vip status: %s", err)
 		}
 		count++
@@ -1042,49 +1120,62 @@ func getClientSet(ctx context.Context, info *types.ClusterInfo) (kubernetes.Inte
 	}
 
 	if *certs.Response.ClusterExternalEndpoint == "" {
-		err := operateClusterVip(ctx, svc, state.ClusterID, "Create")
+		err := operateClusterVip(ctx, svc, state, "Create")
 		if err != nil {
 			return nil, err
 		}
-
-		// update cluster certs with new generated cluster vip
 		certs, err = getClusterCerts(svc, state)
 		if err != nil {
 			return nil, err
 		}
 	}
-
+	// update cluster certs with new generated cluster vip
+	kubconfigResponse, err := getClusterKubeConfig(svc, state)
+	if err != nil {
+		return nil, err
+	}
+	kubeconfig := kubconfigResponse.Response.Kubeconfig
+	clusterConfig := KubeConfig{}
+	err = yaml.Unmarshal([]byte(*kubeconfig), &clusterConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal kubeconfig: %v", err)
+	}
+	singleCluster := clusterConfig.Clusters[0]
+	singleUser := clusterConfig.Users[0]
+	// Pandaria set info
 	info.Version = *cluster.Response.Clusters[0].ClusterVersion
 	info.Endpoint = *certs.Response.ClusterExternalEndpoint
-	info.RootCaCertificate = base64.StdEncoding.EncodeToString([]byte(*certs.Response.CertificationAuthority))
 	info.Username = *certs.Response.UserName
 	info.Password = *certs.Response.Password
 	info.NodeCount = int64(*cluster.Response.Clusters[0].ClusterNodeNum)
 	info.Status = *cluster.Response.Clusters[0].ClusterStatus
-
+	info.RootCaCertificate = singleCluster.ClusterInfo.CertificateAuthorityData
+	info.ClientCertificate = singleUser.UserInfo.ClientCertificateData
+	info.ClientKey = singleUser.UserInfo.ClientKeyData
+	capem, err := base64.StdEncoding.DecodeString(singleCluster.ClusterInfo.CertificateAuthorityData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode CA: %v", err)
+	}
+	key, err := base64.StdEncoding.DecodeString(singleUser.UserInfo.ClientKeyData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode client key: %v", err)
+	}
+	cert, err := base64.StdEncoding.DecodeString(singleUser.UserInfo.ClientCertificateData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode client cert: %v", err)
+	}
+	logrus.Infof("Generate config via CA")
 	host := info.Endpoint
 	if !strings.HasPrefix(host, "https://") {
 		host = fmt.Sprintf("https://%s", host)
 	}
-	var config *restclient.Config
-	kubeconfig := certs.Response.Kubeconfig
-	if kubeconfig != nil {
-		logrus.Infof("Generate config via kubeconfig")
-		config, err = clientcmd.RESTConfigFromKubeConfig([]byte(*kubeconfig))
-		if err != nil {
-			logrus.Infof("Generate config Failed %+v", err)
-			return nil, err
-		}
-	} else {
-		logrus.Infof("Generate config via CA")
-		config = &restclient.Config{
-			Host:     host,
-			Username: *certs.Response.UserName,
-			Password: *certs.Response.Password,
-			TLSClientConfig: restclient.TLSClientConfig{
-				CAData: []byte(*certs.Response.CertificationAuthority),
-			},
-		}
+	config := &restclient.Config{
+		Host: host,
+		TLSClientConfig: restclient.TLSClientConfig{
+			CAData:   capem,
+			KeyData:  key,
+			CertData: cert,
+		},
 	}
 
 	clientSet, err := kubernetes.NewForConfig(config)
@@ -1260,4 +1351,45 @@ func getZone(state *state) (string, error) {
 	}
 
 	return zone, nil
+}
+
+// KubeConfig struct for marshalling config files
+// shouldn't have to reimplement this but kubernetes' model won't serialize correctly for some reason
+type KubeConfig struct {
+	APIVersion string    `yaml:"apiVersion"`
+	Kind       string    `yaml:"kind"`
+	Clusters   []Cluster `yaml:"clusters"`
+	Contexts   []Context `yaml:"contexts"`
+	Users      []User    `yaml:"users"`
+}
+
+type Cluster struct {
+	Name        string      `yaml:"name"`
+	ClusterInfo ClusterInfo `yaml:"cluster"`
+}
+
+type ClusterInfo struct {
+	Server                   string `yaml:"server"`
+	CertificateAuthorityData string `yaml:"certificate-authority-data"`
+}
+
+type Context struct {
+	ContextInfo ContextInfo `yaml:"context"`
+	Name        string      `yaml:"name"`
+}
+
+type ContextInfo struct {
+	Cluster string `yaml:"cluster"`
+	User    string `yaml:"user"`
+}
+
+type User struct {
+	UserInfo UserInfo `yaml:"user"`
+	Name     string   `yaml:"name"`
+}
+
+type UserInfo struct {
+	ClientCertificateData string `yaml:"client-certificate-data"`
+	ClientKeyData         string `yaml:"client-key-data"`
+	Token                 string `yaml:"token"`
 }
